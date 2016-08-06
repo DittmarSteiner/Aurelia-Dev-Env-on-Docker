@@ -1,0 +1,249 @@
+#! /bin/bash
+
+# -----------------------------------------------------------------------------
+# ISC License http://opensource.org/licenses/isc-license.txt
+# -----------------------------------------------------------------------------
+# Copyright (c) 2016, Dittmar Steiner <dittmar.steiner@gmail.com>
+# 
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+# -----------------------------------------------------------------------------
+
+function help() {
+    echo "Usage: `basename "$0"` [command]"
+    echo "Commands:"
+    echo "    <none>      1. Creates a new project in none present in ./project  or"
+    echo "                2. Starts the container  or"
+    echo "                3. Log into the running container (tty)"
+    echo
+    echo "    status      Container running or not"
+    echo "    stop        Stop the container (10 sec)"
+    echo "    kill        Kill the container"
+    echo "    rm          Remove the container"
+    echo "    logs        Read all the logs"
+    echo "    restart     Clear all logs and restart the container"
+    echo "    restart -f  forced restart"
+    echo "    -h, --help  This help"
+    echo
+    echo "    Hint:"
+    echo "    \$ echo \"complete -W 'help kill logs restart rm status stop' aurun\">~/.bashrc && source ~/.bashrc"
+}
+
+function status() {
+    if [ $c == 0 ]; then
+        echo "Container '$name' does not exist.";
+        return 0;
+    fi
+
+    sudo docker ps -saf name="$name"
+}
+
+function create() {
+    # already exists
+    [ $c == 1 ] && return 0;
+
+    echo "Creating container and starting '$name'...";
+
+    sudo docker create -it \
+        --name "$name" \
+        -w "/$name" \
+        -v `pwd`/project:/$name \
+        -p 9000:9000 -p 3001:3001 \
+        aurelia \
+        sh -c "cd /$name && au run --watch";
+}
+
+function start() {
+    create;
+
+    if [ $r == 0 ]; then
+        # always check for pre-run installations
+        if [ ! -e  project/node_modules/bootstrap/package.json ]; then
+            sudo docker run --rm -it \
+                --name "$name-$RANDOM" \
+                -w "/$name" \
+                -v `pwd`/project:/$name \
+                aurelia \
+                sh -c "npm install bootstrap --save --no-optional"
+        fi
+        if [ ! -e  project/node_modules/jquery/package.json ]; then
+            sudo docker run --rm -it \
+                --name "$name-$RANDOM" \
+                -w "/$name" \
+                -v `pwd`/project:/$name \
+                aurelia \
+                sh -c "npm install jquery@^2.2.4 --save --no-optional"
+        fi
+        if [ ! -e  project/node_modules/nprogress/package.json ]; then
+            sudo docker run --rm -it \
+                --name "$name-$RANDOM" \
+                -w "/$name" \
+                -v `pwd`/project:/$name \
+                aurelia \
+                sh -c "npm install nprogress --save --no-optional"
+        fi
+        
+        echo "Starting container '$name'..."
+        echo
+        sudo docker start -a "$name";
+
+        return 0;
+    fi
+
+    echo "Joining container '$name'..."
+    echo
+    echo "Hints: Try"
+    echo "    \$ npm install bootstrap --save --no-optional"
+    echo "or"
+    echo "    \$ npm install jquery@^2.2.4 --save --no-optional"
+    echo
+    sudo docker exec -it "$name" sh;
+    echo
+}
+
+function stop() {
+    # nothing to stop here
+    [[ $c == 0 || $r == 0 ]] && return 0;
+
+    echo "Stopping... "
+    sudo docker stop "$name";
+}
+
+function kill() {
+    # nothing to kill here
+    [[ $c == 0 || $r == 0 ]] && return 0;
+
+    echo "Killing... "
+    sudo docker kill "$name";
+}
+
+function rm() {
+    # nothing to remove here
+    [ $c == 0 ] && return 0;
+
+    kill;
+    echo "Removing... "
+    sudo docker rm "$name";
+}
+
+function logs() {
+    # no logs available
+    [ $c == 0 ] && return 0;
+
+    echo "Logs '$name'..."
+    echo
+    sudo docker logs -f "$name";
+}
+
+function clear() {
+    id=$(sudo docker ps --no-trunc -a | grep -e " $name$" | cut -d ' ' -f 1)
+    sudo truncate -s 0 /var/lib/docker/containers/$id/$id-json.log;
+}
+
+function create_project() {
+    if [ ! -e  project/package.json ]; then
+        export u=$USER
+        echo
+        name="$*"
+        if [ "$name" = "" ]; then
+            echo -n "Enter name (default '$(basename `pwd`)'): "
+            read tname
+            if [ "$tname" = "" ]; then
+                name="$(basename `pwd`)"
+            fi
+        fi
+        echo
+        echo "Will crate '$name'..."
+
+        mkdir -p project
+        sudo chown $u project
+        sudo docker run --rm -it \
+            --name "$(basename `pwd`)-$RANDOM" \
+            -w "/$(basename `pwd`)" \
+            -v `pwd`/project:/$name \
+            aurelia \
+            sh -c "cd / && au new $name"
+        cat <<'EOF'> project/.gitignore
+# generated
+node_modules
+scripts/app-bundle.js
+scripts/app-bundle.js.map
+scripts/vendor-bundle.js
+
+# IDEs
+.idea
+.classpath
+.project
+.settings
+
+# misc
+.DS_STORE
+*~
+~*
+EOF
+    fi # [ ! -e  project/package.json ]
+}
+
+###############################################################################
+if [ -e  project/package.json ]; then
+    # get the name of the project
+    name=$(head -n 3 project/package.json | grep '"name"' | cut -d '"' -f 4)
+    # is there any container with that name?
+    #container=$(sudo docker ps -a | grep -e " $name$" | tr -s ' ')
+    #for i in $container; do c=$i; done
+    c=$(docker ps -sqaf name=$name | grep -c .)
+    # is there any container with that name running?
+    #running=$(sudo docker ps | grep -e " $name$" | tr -s ' ')
+    #for i in $running; do r=$i; done
+    r=$(docker ps -sqf name=$name | grep -c .)
+fi
+
+case "$1" in
+    "")
+        if [ ! -e  project/package.json ]; then
+            create_project;
+            exit 0;
+        fi
+        start;
+    ;;
+    
+    status)
+        status;
+    ;;
+    
+    stop)
+        stop;
+    ;;
+    
+    kill)
+        kill;
+    ;;
+    
+    rm)
+        rm;
+    ;;
+    
+    logs)
+        logs;
+    ;;
+    
+    restart)
+        [ "$2" == "-f" ] && kill || stop;
+        clear;
+        r=0;
+        start;
+    ;;
+    
+    *)
+        help;
+    ;;
+esac

@@ -1,0 +1,14 @@
+# generated project - needs it' ows Git
+project
+
+# IDEs
+.idea
+.classpath
+.project
+.settings
+
+# misc
+.DS_STORE
+*~
+~*
+
