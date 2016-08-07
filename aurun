@@ -68,28 +68,13 @@ function start() {
     if [ $r == 0 ]; then
         # always check for pre-run installations
         if [ ! -e  project/node_modules/bootstrap/package.json ]; then
-            sudo docker run --rm -it \
-                --name "$name-$RANDOM" \
-                -w "/$name" \
-                -v `pwd`/project:/$name \
-                aurelia \
-                sh -c "npm install bootstrap --save --no-optional"
+            do_exec 'bootstrap';
         fi
         if [ ! -e  project/node_modules/jquery/package.json ]; then
-            sudo docker run --rm -it \
-                --name "$name-$RANDOM" \
-                -w "/$name" \
-                -v `pwd`/project:/$name \
-                aurelia \
-                sh -c "npm install jquery@^2.2.4 --save --no-optional"
+            do_exec 'jquery@^2.2.4';
         fi
         if [ ! -e  project/node_modules/nprogress/package.json ]; then
-            sudo docker run --rm -it \
-                --name "$name-$RANDOM" \
-                -w "/$name" \
-                -v `pwd`/project:/$name \
-                aurelia \
-                sh -c "npm install nprogress --save --no-optional"
+            do_exec 'nprogress';
         fi
         
         echo "Starting container '$name'..."
@@ -108,6 +93,15 @@ function start() {
     echo
     sudo docker exec -it "$name" sh;
     echo
+}
+
+function do_exec() {
+    sudo docker run --rm -it \
+        --name "$name-$RANDOM" \
+        -w "/$name" \
+        -v `pwd`/project:/$name \
+        aurelia \
+        sh -c "npm install $1 --save --no-optional"
 }
 
 function stop() {
