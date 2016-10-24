@@ -65,17 +65,14 @@ function create() {
 function start() {
     create;
 
+    # runs `npm install` if not found
+    [ -d project/node_modules/ ] || do_exec;
+
     if [ $r == 0 ]; then
         # always check for pre-run installations
-        if [ ! -e  project/node_modules/bootstrap/package.json ]; then
-            do_exec 'bootstrap';
-        fi
-        if [ ! -e  project/node_modules/jquery/package.json ]; then
-            do_exec 'jquery@^2.2.4';
-        fi
-        if [ ! -e  project/node_modules/nprogress/package.json ]; then
-            do_exec 'nprogress';
-        fi
+        [ -e project/node_modules/bootstrap/package.json ] || do_exec 'bootstrap';
+        [ -e project/node_modules/jquery/package.json ]    || do_exec 'jquery@^2.2.4';
+        [ -e project/node_modules/nprogress/package.json ] || do_exec 'nprogress';
         
         echo "Starting container '$name'..."
         echo
@@ -138,6 +135,11 @@ function logs() {
     sudo docker logs -f "$name";
 }
 
+function reinit() {
+    create;
+    do_exec;
+}
+
 function clear() {
     id=$(sudo docker ps --no-trunc -a | grep -e " $name$" | cut -d ' ' -f 1)
     sudo truncate -s 0 /var/lib/docker/containers/$id/$id-json.log;
@@ -148,15 +150,13 @@ function create_project() {
         export u=$USER
         echo
         name="$*"
-        if [ "$name" = "" ]; then
+        if [ -z "$name" ]; then
             echo -n "Enter name (default '$(basename `pwd`)'): "
             read tname
-            if [ "$tname" = "" ]; then
-                name="$(basename `pwd`)"
-            fi
+            [ -z "$tname" ] && name="$(basename `pwd`)";
         fi
         echo
-        echo "Will crate '$name'..."
+        echo "Will create '$name'..."
 
         mkdir -p project
         sudo chown $u project
@@ -229,9 +229,13 @@ case "$1" in
     logs)
         logs;
     ;;
+
+    reinit)
+        reinit;
+    ;;
     
     restart)
-        [ "$2" == "-f" ] && kill || stop;
+        [ "$2" == '-f' ] && kill || stop;
         clear;
         r=0;
         start;
